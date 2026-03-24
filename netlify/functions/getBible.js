@@ -99,37 +99,39 @@ exports.handler = async (event) => {
         const $ = cheerio.load(data);
         let verses = [];
 
-        // Selecting specific content area tags to avoid site navigation text
-        $('p, div.entry-content span, li').each((i, el) => {
+        // Selecting p, div, and span - typical containers for Bible text
+        $('p, div, span').each((i, el) => {
+            // Remove <sup> tags if they exist (often used for verse numbers)
+            // but we keep their text for the regex to pick up
             let rawText = $(el).text().trim();
 
-            // 1. Identify the verse number FIRST
-            // Matches: "1:1 text", "1 text", "1. text", "(1) text"
-            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[)\s.]+(.*)/);
+            // 1. Remove text inside < > brackets first
+            rawText = rawText.replace(/<[^>]*>/g, '');
+
+            // 2. IMPROVED REGEX: 
+            // Handles "1 text", "1:1 text", "1.text", "(1)text"
+            // The key change is using \s* (zero or more spaces) instead of \s+
+            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[)\s.]*(.*)/);
             
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
+                let content = vMatch[3].trim();
                 
-                // 2. STRICT FILTER: Only proceed if within range
+                // 3. STRICT RANGE FILTER
                 if (vNum >= start && vNum <= end) {
-                    
-                    // 3. CLEANING: Remove the verse prefix and any <...> tags
-                    let cleanContent = vMatch[3].trim();
-                    cleanContent = cleanContent.replace(/<[^>]*>/g, '');
-
-                    // 4. Avoid duplicates
-                    if (!verses.some(v => v.num === vNum)) {
-                        verses.push({ num: vNum, text: cleanContent });
+                    // 4. CLEANING: If the content still starts with the verse number (sticky text)
+                    // we remove it. Example: if raw is "1Text", vMatch[3] might be "Text"
+                    if (!verses.some(v => v.num === vNum) && content.length > 0) {
+                        verses.push({ num: vNum, text: content });
                     }
                 }
             }
         });
 
         if (verses.length === 0) {
-            return { statusCode: 404, body: `Error: No verses found in range ${start}-${end}.` };
+            return { statusCode: 404, body: `Error: No verses found in range ${start}-${end}. Check if '${searchKey}' exists in your map.` };
         }
 
-        // Sort and combine
         verses.sort((a, b) => a.num - b.num);
         const resultLines = verses.map(v => v.text).join('\n');
         const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
