@@ -69,90 +69,52 @@
 
     <div id="aiOutput" class="markdown-body"></div>
 
-    <hr>
+<hr>
 
     <h3>✍️ 나의 묵상 기록 (Self Devotional)</h3>
-    <textarea id="userDevotional" placeholder="오늘 느낀 점이나 묵상한 내용을 자유롭게 적어보세요..."></textarea>
+    
+    <div style="text-align: right; font-size: 12px; color: #7f8c8d; margin-bottom: 5px;">
+        원본 글자 수: <span id="originalCount">0</span>자
+    </div>
+    
+    <textarea id="userDevotional" 
+              placeholder="오늘 느낀 점이나 묵상한 내용을 자유롭게 적어보세요..." 
+              oninput="updateOriginalCount()"></textarea>
     
     <button id="refineBtn" class="btn-refine" onclick="refineDevotional()">AI 문장 다듬기 ✨</button>
     
-    <div id="refineOutput" class="markdown-body"></div>
+    <div id="refineResultContainer" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+            <span style="font-size: 14px; font-weight: bold; color: #2c3e50;">다듬어진 묵상</span>
+            <span style="font-size: 12px; color: #7f8c8d;">수정 후 글자 수: <span id="modifiedCount">0</span>자</span>
+        </div>
+        
+        <div id="refineOutput" class="markdown-body"></div>
+        
+        <button id="copyRefinedBtn" class="btn-copy" style="display: block; margin-top: 10px;" onclick="copyRefinedText()">
+            다듬어진 문장 복사
+        </button>
+    </div>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', updateHistoryUI);
-
-    // 1. 성경 구절 가져오기
-    async function fetchVerse(overrideInput = null) {
-        const inputField = document.getElementById('verseInput');
-        const input = overrideInput || inputField.value;
-        if (overrideInput) inputField.value = overrideInput;
-
-        const output = document.getElementById('output');
-        const loading = document.getElementById('loading');
-        const aiBtn = document.getElementById('aiBtn');
-        const aiOutput = document.getElementById('aiOutput');
-
-        if (!input) return alert("구절을 입력하세요!");
-
-        loading.style.display = 'block';
-        output.value = '';
-        aiBtn.style.display = 'none';
-        aiOutput.style.display = 'none';
-
-        try {
-            const res = await fetch(`/.netlify/functions/getBible?ref=${encodeURIComponent(input)}`);
-            const data = await res.text();
-
-            if (res.ok) {
-                output.value = data;
-                document.getElementById('copyBtn').style.display = 'block';
-                aiBtn.style.display = 'block';
-                saveToHistory(input);
-            } else {
-                output.value = data;
-            }
-        } catch (err) {
-            output.value = "연결 오류가 발생했습니다.";
-        } finally {
-            loading.style.display = 'none';
-        }
+    // --- Live Character Counter for Input ---
+    function updateOriginalCount() {
+        const text = document.getElementById('userDevotional').value;
+        document.getElementById('originalCount').innerText = text.length;
     }
 
-    // 2. AI 말씀 묵상 해석
-    async function interpretAI() {
-        const verses = document.getElementById('output').value;
-        const aiOutput = document.getElementById('aiOutput');
-        const aiBtn = document.getElementById('aiBtn');
-
-        aiOutput.style.display = 'block';
-        aiOutput.innerHTML = "<em>AI가 말씀을 묵상 중입니다...</em>";
-        aiBtn.disabled = true;
-
-        try {
-            const response = await fetch('/.netlify/functions/interpret', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ verses: verses })
-            });
-            const result = await response.text();
-            aiOutput.innerHTML = marked.parse(result);
-        } catch (err) {
-            aiOutput.innerHTML = "AI 해석을 가져오지 못했습니다.";
-        } finally {
-            aiBtn.disabled = false;
-        }
-    }
-
-    // 3. 나의 묵상 문장 다듬기
+    // --- Refine Function ---
     async function refineDevotional() {
         const text = document.getElementById('userDevotional').value;
+        const resultContainer = document.getElementById('refineResultContainer');
         const refineOutput = document.getElementById('refineOutput');
+        const modifiedCountDisp = document.getElementById('modifiedCount');
         const refineBtn = document.getElementById('refineBtn');
 
         if (!text) return alert("내용을 입력해주세요!");
 
-        refineOutput.style.display = 'block';
+        resultContainer.style.display = 'block';
         refineOutput.innerHTML = "<em>문장을 다듬는 중입니다...</em>";
         refineBtn.disabled = true;
 
@@ -163,7 +125,15 @@
                 body: JSON.stringify({ text: text })
             });
             const result = await response.text();
+            
+            // Show character count of the AI result
+            modifiedCountDisp.innerText = result.length;
+            
+            // Render as Markdown
             refineOutput.innerHTML = marked.parse(result);
+            // Save raw text to a data attribute for easy copying
+            refineOutput.setAttribute('data-raw', result);
+            
         } catch (err) {
             refineOutput.innerHTML = "문장을 다듬는 데 실패했습니다.";
         } finally {
@@ -171,30 +141,17 @@
         }
     }
 
-    // 유틸리티 함수들
-    function saveToHistory(ref) {
-        let history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
-        history = history.filter(item => item !== ref);
-        history.unshift(ref);
-        localStorage.setItem('bibleHistory', JSON.stringify(history.slice(0, 5)));
-        updateHistoryUI();
+    // --- Copy Refined Text Only ---
+    function copyRefinedText() {
+        const rawText = document.getElementById('refineOutput').getAttribute('data-raw');
+        if (!rawText) return;
+        
+        navigator.clipboard.writeText(rawText).then(() => {
+            alert("다듬어진 문장이 복사되었습니다!");
+        });
     }
 
-    function updateHistoryUI() {
-        const container = document.getElementById('history');
-        const history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
-        container.innerHTML = history.map(item => 
-            `<span class="history-item" onclick="fetchVerse('${item}')">${item}</span>`
-        ).join('');
-    }
-
-    function copyText() {
-        const output = document.getElementById('output');
-        output.select();
-        document.execCommand('copy');
-        alert("복사되었습니다!");
-    }
+    // ... your existing fetchVerse and interpretAI scripts ...
 </script>
-
 </body>
 </html>
