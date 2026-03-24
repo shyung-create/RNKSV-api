@@ -97,55 +97,56 @@ exports.handler = async (event) => {
             headers: { 'User-Agent': 'Mozilla/5.0' } 
         });
         const $ = cheerio.load(data);
+        let verses = [];
+
+        // --- 핵심 수정 부분: 특정 본문 영역만 타겟팅 ---
+        // nocr.net의 실제 본문은 보통 .entry-content 또는 특정 article 안에 있습니다.
+        const contentArea = $('.entry-content, .content, article').first();
         
-        // Use a Set to store unique verses in order
-        let versesFound = [];
+        // 만약 특정 영역을 못 찾으면 전체 body에서 찾되, 불필요한 태그는 제외
+        const target = contentArea.length ? contentArea : $('body');
 
-        // FOCUS only on the content body to avoid grabbing navigation or headers
-        const contentBody = $('.entry-content').text() || $('body').text();
+        target.find('p, div, span, li').each((i, el) => {
+            let rawText = $(el).text().trim();
+            
+            // 1. 노이즈 필터링: 하단 메뉴나 내비게이션 텍스트가 포함되면 즉시 스킵
+            const noiseKeywords = ["Prev", "Next", "List", "목록", "Facebook", "Twitter", "댓글", "인쇄", "by 자료선교부"];
+            if (noiseKeywords.some(keyword => rawText.includes(keyword))) return;
 
-        // 1. CLEANING: Remove all < > tags and their content immediately
-        const cleanBody = contentBody.replace(/<[^>]*>/g, '');
+            // 2. 불필요한 HTML 태그 제거
+            rawText = rawText.replace(/<[^>]*>/g, '');
 
-        // 2. PARSING: Split the text by verse numbers
-        // This looks for numbers like "1 ", "2 ", "1:1 ", etc.
-        const parts = cleanBody.split(/(?=\n\d+\s|\s\d+\s|^ \d+\s|\d+:\d+\s)/);
-
-        parts.forEach(part => {
-            const trimmedPart = part.trim();
-            // Regex to find: (Chapter:Verse or VerseNum)(Space)(Text)
-            const vMatch = trimmedPart.match(/^(\d+[:.]\s*)?(\d+)\s+(.*)/s);
+            // 3. 성경 구절 정규식 (절 번호로 시작하는지 확인)
+            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[)\s.]+(.*)/);
             
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
-                const vText = vMatch[3].trim();
-
-                // 3. STRICT RANGE FILTER
+                let content = vMatch[3].trim();
+                
+                // 4. 요청한 범위 내의 절만 저장
                 if (vNum >= start && vNum <= end) {
-                    // Check for duplicates
-                    if (!versesFound.some(v => v.num === vNum)) {
-                        versesFound.push({ num: vNum, text: vText });
+                    if (!verses.some(v => v.num === vNum)) {
+                        verses.push({ num: vNum, text: content });
                     }
                 }
             }
         });
 
-        if (versesFound.length === 0) {
+        if (verses.length === 0) {
             return { statusCode: 404, body: `No verses found in range ${start}-${end}.` };
         }
 
-        // 4. FORMATTING: Remove the verse numbers from the start of the output
-        versesFound.sort((a, b) => a.num - b.num);
-        const finalLines = versesFound.map(v => v.text).join('\n');
-        const header = `[${fullKoreanBook} ${chapter}:${start}-${end}]`;
+        verses.sort((a, b) => a.num - b.num);
+        const resultLines = verses.map(v => v.text).join('\n');
+        const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
 
         return {
             statusCode: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
-            body: `${header}\n${finalLines}`
+            body: `${header}\n${resultLines}`
         };
 
     } catch (error) {
-        return { statusCode: 500, body: `Fetch failed: ${error.message}` };
+        return { statusCode: 500, body: `Error: ${error.message}` };
     }
 };
