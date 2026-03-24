@@ -73,10 +73,9 @@ const BOOK_NAMES = {
     "revelation": "요한계시록", "rev": "요한계시록", "rv": "요한계시록", "계": "요한계시록"
 };
 
-
 exports.handler = async (event) => {
     const userQuery = event.queryStringParameters.ref;
-    if (!userQuery) return { statusCode: 400, body: "Error: No reference provided." };
+    if (!userQuery) return { statusCode: 400, body: "Error: No reference." };
 
     const regex = /([a-zA-Z\uAC00-\uD7A3\d\s]+)\s+(\d+):(\d+)(?:[-–—](\d+))?/;
     const match = userQuery.match(regex);
@@ -87,40 +86,38 @@ exports.handler = async (event) => {
     const start = parseInt(startV);
     const end = endV ? parseInt(endV) : start;
 
-    // 1. 한국어 정식 명칭으로 변환
     const fullKoreanBook = BOOK_NAMES[bookRaw] || bookRaw;
-    
-    // 2. JSON 키 형식에 맞게 변환 (중요!)
-    // 예: "1" -> "01", "10" -> "10"
     const paddedChapter = chapter.toString().padStart(2, '0');
-    // JSON에 있는 "표준새번역 창세기 01" 형식과 일치시킴
     const searchKey = `표준새번역 ${fullKoreanBook} ${paddedChapter}`;
-
     const urlId = bibleMapData[searchKey];
 
-    if (!urlId) {
-        return { 
-            statusCode: 404, 
-            body: `Error: Could not find URL for '${searchKey}' in bible_map.json.` 
-        };
-    }
-
-    // JSON의 ID 값에 이미 ?page=1이 포함되어 있어도 정상 작동합니다.
-    const url = `https://nocr.net/kornks/${urlId}`;
+    if (!urlId) return { statusCode: 404, body: `Error: ID not found for ${searchKey}` };
 
     try {
-        const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const { data } = await axios.get(`https://nocr.net/kornks/${urlId}`, { 
+            headers: { 'User-Agent': 'Mozilla/5.0' } 
+        });
         const $ = cheerio.load(data);
         let verses = [];
 
-        // 본문 추출 로직
+        // 1. Scrape every element that might contain verse text
         $('p, div, span, li').each((i, el) => {
-            const rawText = $(el).text().trim();
-            const vMatch = rawText.match(/^(\d+[:.]?)?(\d+)\s+(.*)/);
+            let rawText = $(el).text().trim();
+            
+            // 2. Remove anything between < and > (including the brackets)
+            rawText = rawText.replace(/<[^>]*>/g, '');
+
+            // 3. Regex to detect verse numbers at the start (e.g., "1", "1:1", "1.")
+            // This captures: (optional chapter part)(verse number)(space)(rest of text)
+            const vMatch = rawText.match(/^(\d+[:.]\s*)?(\d+)\s+(.*)/);
+            
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
                 const content = vMatch[3].trim();
+                
+                // 4. STRICT FILTER: Only add if within the requested range
                 if (vNum >= start && vNum <= end) {
+                    // Avoid duplicates (since we check multiple tag types)
                     if (!verses.some(v => v.num === vNum)) {
                         verses.push({ num: vNum, text: content });
                     }
@@ -128,20 +125,24 @@ exports.handler = async (event) => {
             }
         });
 
+        // Sort by verse number
+        verses.sort((a, b) => a.num - b.num);
+
         if (verses.length === 0) {
-            return { statusCode: 404, body: `Error: No text found for ${fullKoreanBook} ${chapter}:${start}-${end}.` };
+            return { statusCode: 404, body: `Error: No verses found in range ${start}-${end}.` };
         }
 
-        verses.sort((a, b) => a.num - b.num);
-        const resultText = verses.map(v => v.text).join('\n');
+        // 5. Final output construction
+        const resultLines = verses.map(v => v.text).join('\n');
         const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
 
         return {
             statusCode: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
-            body: `${header}\n${resultText}`
+            body: `${header}\n${resultLines}`
         };
+
     } catch (error) {
-        return { statusCode: 500, body: `Error: Fetch failed. (${error.message})` };
+        return { statusCode: 500, body: `Error: Fetch failed. ${error.message}` };
     }
 };
