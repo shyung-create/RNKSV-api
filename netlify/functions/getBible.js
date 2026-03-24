@@ -72,6 +72,7 @@ const BOOK_NAMES = {
     "jude": "유다서", "jud": "유다서", "유": "유다서",
     "revelation": "요한계시록", "rev": "요한계시록", "rv": "요한계시록", "계": "요한계시록"
 };
+
 exports.handler = async (event) => {
     const userQuery = event.queryStringParameters.ref;
     if (!userQuery) return { statusCode: 400, body: "Error: No reference." };
@@ -99,32 +100,31 @@ exports.handler = async (event) => {
         const $ = cheerio.load(data);
         let verses = [];
 
-        // --- 핵심 수정 부분: 특정 본문 영역만 타겟팅 ---
-        // nocr.net의 실제 본문은 보통 .entry-content 또는 특정 article 안에 있습니다.
+        // Focus strictly on the article body
         const contentArea = $('.entry-content, .content, article').first();
-        
-        // 만약 특정 영역을 못 찾으면 전체 body에서 찾되, 불필요한 태그는 제외
         const target = contentArea.length ? contentArea : $('body');
 
         target.find('p, div, span, li').each((i, el) => {
             let rawText = $(el).text().trim();
             
-            // 1. 노이즈 필터링: 하단 메뉴나 내비게이션 텍스트가 포함되면 즉시 스킵
-            const noiseKeywords = ["Prev", "Next", "List", "목록", "Facebook", "Twitter", "댓글", "인쇄", "by 자료선교부"];
-            if (noiseKeywords.some(keyword => rawText.includes(keyword))) return;
+            // Noise filtering: Skip if it looks like site navigation
+            const noiseKeywords = ["Prev", "Next", "List", "목록", "Facebook", "Twitter", "인쇄", "by 자료선교부"];
+            if (noiseKeywords.some(k => rawText.startsWith(k)) || rawText.length < 2) return;
 
-            // 2. 불필요한 HTML 태그 제거
-            rawText = rawText.replace(/<[^>]*>/g, '');
-
-            // 3. 성경 구절 정규식 (절 번호로 시작하는지 확인)
-            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[)\s.]+(.*)/);
+            // REGEX EXPLAINED:
+            // ^[\s(]* -> Optional leading space or bracket
+            // (\d+[:.]\s*)?    -> Optional "Chapter:" prefix
+            // (\d+)            -> THE VERSE NUMBER (Required)
+            // [\s.)]* -> Zero or more spaces/dots (Sticky text support)
+            // (.*)             -> THE ACTUAL BIBLE TEXT
+            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[\s.)]*(.*)/);
             
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
-                let content = vMatch[3].trim();
+                const content = vMatch[3].trim();
                 
-                // 4. 요청한 범위 내의 절만 저장
-                if (vNum >= start && vNum <= end) {
+                // Only process if verse has actual content and is in range
+                if (vNum >= start && vNum <= end && content.length > 0) {
                     if (!verses.some(v => v.num === vNum)) {
                         verses.push({ num: vNum, text: content });
                     }
