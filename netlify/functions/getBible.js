@@ -137,7 +137,7 @@ exports.handler = async (event) => {
         // 4. FORMATTING: Remove the verse numbers from the start of the output
         versesFound.sort((a, b) => a.num - b.num);
         const finalLines = versesFound.map(v => v.text).join('\n');
-        const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
+        const header = `[${fullKoreanBook} ${chapter}:${start}-${end}]`;
 
         return {
             statusCode: 200,
