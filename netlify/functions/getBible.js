@@ -1,9 +1,8 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// Comprehensive Book Mapping (Korean/English/Abbr)
+// Comprehensive 66-book mapping
 const BIBLE_MAP = {
-    // 구약성경 (Old Testament)
     "창세기": ["창세기", "gen"], "창": ["창세기", "gen"], "Genesis": ["창세기", "gen"], "Gen": ["창세기", "gen"], "Gn": ["창세기", "gen"],
     "출애굽기": ["출애굽기", "exo"], "출": ["출애굽기", "exo"], "Exodus": ["출애굽기", "exo"], "Exo": ["출애굽기", "exo"], "Ex": ["출애굽기", "exo"],
     "레위기": ["레위기", "lev"], "레": ["레위기", "lev"], "Leviticus": ["레위기", "lev"], "Lev": ["레위기", "lev"], "Lv": ["레위기", "lev"],
@@ -32,7 +31,7 @@ const BIBLE_MAP = {
     "에스겔": ["에스겔", "ezk"], "겔": ["에스겔", "ezk"], "Ezekiel": ["에스겔", "ezk"], "Ezk": ["에스겔", "ezk"], "Ez": ["에스겔", "ezk"],
     "다니엘": ["다니엘", "dan"], "단": ["다니엘", "dan"], "Daniel": ["다니엘", "dan"], "Dan": ["다니엘", "dan"], "Dn": ["다니엘", "dan"],
     "호세아": ["호세아", "hos"], "호": ["호세아", "hos"], "Hosea": ["호세아", "hos"], "Hos": ["호세아", "hos"], "Ho": ["호세아", "hos"],
-    "요엘": ["요엘", "jol"], "요엘": ["요엘", "jol"], "Joel": ["요엘", "jol"], "Jol": ["요엘", "jol"], "Jl": ["요엘", "jol"],
+    "요엘": ["요엘", "jol"], "Joel": ["요엘", "jol"], "Jol": ["요엘", "jol"], "Jl": ["요엘", "jol"],
     "아모스": ["아모스", "amo"], "암": ["아모스", "amo"], "Amos": ["아모스", "amo"], "Amo": ["아모스", "amo"], "Am": ["아모스", "amo"],
     "오바댜": ["오바댜", "oba"], "오": ["오바댜", "oba"], "Obadiah": ["오바댜", "oba"], "Oba": ["오바댜", "oba"], "Ob": ["오바댜", "oba"],
     "요나": ["요나", "jon"], "욘": ["요나", "jon"], "Jonah": ["요나", "jon"], "Jon": ["요나", "jon"],
@@ -43,8 +42,6 @@ const BIBLE_MAP = {
     "학개": ["학개", "hag"], "학": ["학개", "hag"], "Haggai": ["학개", "hag"], "Hag": ["학개", "hag"], "Hg": ["학개", "hag"],
     "스가랴": ["스가랴", "zec"], "슥": ["스가랴", "zec"], "Zechariah": ["스가랴", "zec"], "Zec": ["스가랴", "zec"], "Zc": ["스가랴", "zec"],
     "말라기": ["말라기", "mal"], "말": ["말라기", "mal"], "Malachi": ["말라기", "mal"], "Mal": ["말라기", "mal"], "Ml": ["말라기", "mal"],
-
-    // 신약성경 (New Testament)
     "마태복음": ["마태복음", "mat"], "마": ["마태복음", "mat"], "Matthew": ["마태복음", "mat"], "Mat": ["마태복음", "mat"], "Mt": ["마태복음", "mat"],
     "마가복음": ["마가복음", "mrk"], "막": ["마가복음", "mrk"], "Mark": ["마가복음", "mrk"], "Mrk": ["마가복음", "mrk"], "Mk": ["마가복음", "mrk"],
     "누가복음": ["누가복음", "luk"], "누": ["누가복음", "luk"], "Luke": ["누가복음", "luk"], "Luk": ["누가복음", "luk"], "Lk": ["누가복음", "luk"],
@@ -75,54 +72,66 @@ const BIBLE_MAP = {
 };
 
 exports.handler = async (event) => {
-    const userQuery = event.queryStringParameters.ref; // e.g. ?ref=마 1:1-3
-    if (!userQuery) return { statusCode: 400, body: "Missing reference." };
+    const userQuery = event.queryStringParameters.ref;
+    if (!userQuery) return { statusCode: 400, body: "Error: No reference provided." };
 
-    // 1. Regex to Parse Input
     const regex = /([a-zA-Z\uAC00-\uD7A3\d\s]+)\s+(\d+):(\d+)(?:[-–—](\d+))?/;
     const match = userQuery.match(regex);
-    if (!match) return { statusCode: 400, body: "Invalid Format." };
+    if (!match) return { statusCode: 400, body: "Error: Invalid Format. Use 'Matthew 1:1-3'." };
 
     let [_, bookRaw, chapter, startV, endV] = match;
     bookRaw = bookRaw.trim();
-    endV = endV || startV;
+    const start = parseInt(startV);
+    const end = endV ? parseInt(endV) : start;
 
     const bookData = BIBLE_MAP[bookRaw];
-    if (!bookData) return { statusCode: 404, body: "Book not found." };
+    if (!bookData) return { statusCode: 404, body: `Error: Book '${bookRaw}' not found.` };
 
     const [fullKoreanName, webCode] = bookData;
-    const url = `https://nocr.net/bible/nksv/${webCode}/${chapter}`;
+    // Updated URL to use /kornks/ as requested
+    const url = `https://nocr.net/kornks/${webCode}/${chapter}`;
 
     try {
-        const { data } = await axios.get(url);
+        const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $ = cheerio.load(data);
         let verses = [];
 
-        // 2. Scraping and Cleaning Logic
-        // Adjust selectors based on nocr.net's actual HTML structure
-        $('.verse, p, div').each((i, el) => {
-            const text = $(el).text().trim();
-            // Match "1:1 Text..." or "1 Text..."
-            const verseMatch = text.match(/^(\d+[:.]?)?(\d+)\s+(.*)/);
-            if (verseMatch) {
-                const vNum = parseInt(verseMatch[2]);
-                const content = verseMatch[3];
-                if (vNum >= parseInt(startV) && vNum <= parseInt(endV)) {
-                    verses.push(content);
+        // Scrape logic adjusted for nocr.net/kornks structure
+        $('p, div, span, li').each((i, el) => {
+            const rawText = $(el).text().trim();
+            
+            // Regex to find verse numbers like "1:1", "1", "(1)" etc.
+            const vMatch = rawText.match(/^(\d+[:.]?)?(\d+)\s+(.*)/);
+            if (vMatch) {
+                const vNum = parseInt(vMatch[2]);
+                const content = vMatch[3].trim();
+                
+                if (vNum >= start && vNum <= end) {
+                    if (!verses.some(v => v.num === vNum)) {
+                        verses.push({ num: vNum, text: content });
+                    }
                 }
             }
         });
 
-        // 3. Formatted Output
-        const header = `'${fullKoreanName} ${chapter}:${startV}-${endV}'`;
-        const finalOutput = [header, ...verses].join('\n');
+        if (verses.length === 0) {
+            return { statusCode: 404, body: `Error: No text found for ${fullKoreanName} ${chapter}:${start}-${end}.` };
+        }
+
+        verses.sort((a, b) => a.num - b.num);
+        const resultText = verses.map(v => v.text).join('\n');
+        const header = `'${fullKoreanName} ${chapter}:${start}-${end}'`;
 
         return {
             statusCode: 200,
-            headers: { "Content-Type": "text/plain; charset=utf-8" },
-            body: finalOutput
+            headers: { 
+                "Content-Type": "text/plain; charset=utf-8",
+                "Access-Control-Allow-Origin": "*" 
+            },
+            body: `${header}\n${resultText}`
         };
+
     } catch (error) {
-        return { statusCode: 500, body: "Error fetching Bible data." };
+        return { statusCode: 500, body: `Error: Failed to fetch data. (${error.message})` };
     }
 };
