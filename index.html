@@ -13,7 +13,7 @@
 
         input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         
-        /* --- AUTO-EXPANDING TEXTAREA CSS --- */
+        /* 자동 확장 텍스트 영역 */
         textarea { 
             width: 100%; 
             padding: 12px; 
@@ -25,8 +25,8 @@
             background-color: #fafafa; 
             line-height: 1.6;
             min-height: 100px;
-            overflow: hidden; /* Hide scrollbars as it grows */
-            resize: none;     /* Disable manual resize since it's automatic now */
+            overflow: hidden; 
+            resize: none; 
             transition: height 0.1s ease;
         }
 
@@ -48,7 +48,8 @@
         #aiOutput { background: #fdf2ff; border: 1px solid #dcb0ea; color: #4b2c5e; }
         #refineOutput { background: #f0f4f8; border: 1px solid #bcccdc; color: #243b53; }
 
-        .markdown-body ul { padding-left: 20px; }
+        .markdown-body ul { padding-left: 20px; margin: 10px 0; }
+        .markdown-body li { margin-bottom: 8px; }
         .loading { text-align: center; display: none; color: #7f8c8d; font-size: 14px; margin: 10px 0; }
         hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
     </style>
@@ -90,20 +91,19 @@
 <script>
     document.addEventListener('DOMContentLoaded', updateHistoryUI);
 
-    // --- AUTO-EXPAND LOGIC ---
+    // --- 텍스트 영역 자동 확장 공통 로직 ---
     function autoExpand(el) {
         el.style.height = 'auto';
         el.style.height = el.scrollHeight + 'px';
     }
 
-    // Helper to combine count and expand
+    // --- 실시간 글자 수 및 확장 업데이트 ---
     function updateDevotional(el) {
         autoExpand(el);
-        const text = el.value;
-        document.getElementById('originalCount').innerText = text.length;
+        document.getElementById('originalCount').innerText = el.value.length;
     }
 
-    // --- BIBLE LOGIC ---
+    // --- 성경 구절 가져오기 ---
     async function fetchVerse(overrideInput = null) {
         const inputField = document.getElementById('verseInput');
         const input = overrideInput || inputField.value;
@@ -120,8 +120,8 @@
             const data = await res.text();
             output.value = data;
             
-            // Trigger auto-expand after content loads
-            autoExpand(output);
+            // 데이터 로드 후 자동 확장 실행
+            setTimeout(() => autoExpand(output), 10);
             
             document.getElementById('copyBtn').style.display = 'block';
             document.getElementById('aiBtn').style.display = 'block';
@@ -130,50 +130,61 @@
         finally { loading.style.display = 'none'; }
     }
 
+    // --- AI 말씀 묵상 해석 ---
     async function interpretAI() {
         const verses = document.getElementById('output').value;
         const aiOutput = document.getElementById('aiOutput');
         aiOutput.style.display = 'block';
-        aiOutput.innerHTML = "<em>AI가 묵상 중입니다...</em>";
+        aiOutput.innerHTML = "<em>AI가 말씀을 묵상 중입니다...</em>";
         try {
             const res = await fetch('/.netlify/functions/interpret', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ verses })
             });
             const data = await res.text();
             aiOutput.innerHTML = marked.parse(data);
-        } catch (err) { aiOutput.innerHTML = "AI 오류"; }
+        } catch (err) { aiOutput.innerHTML = "AI 오류가 발생했습니다."; }
     }
 
-    // --- REFINE LOGIC ---
+    // --- AI 문장 다듬기 (성경 구절 맥락 포함) ---
     async function refineDevotional() {
-        const text = document.getElementById('userDevotional').value;
+        const devotionalText = document.getElementById('userDevotional').value;
+        const bibleContext = document.getElementById('output').value; // 성경 구절 데이터 가져오기
+        
         const resultArea = document.getElementById('refineResultArea');
         const refineOutput = document.getElementById('refineOutput');
         const modifiedCount = document.getElementById('modifiedCount');
         const refineBtn = document.getElementById('refineBtn');
 
-        if (!text) return alert("내용을 입력하세요!");
+        if (!devotionalText) return alert("내용을 입력하세요!");
 
         resultArea.style.display = 'block';
-        refineOutput.innerHTML = "<em>다듬는 중...</em>";
+        refineOutput.innerHTML = "<em>맥락을 분석하여 다듬는 중...</em>";
         refineBtn.disabled = true;
 
         try {
             const res = await fetch('/.netlify/functions/refine', {
                 method: 'POST',
-                body: JSON.stringify({ text })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    text: devotionalText,
+                    context: bibleContext // 성경 구절 정보를 함께 전송
+                })
             });
             const data = await res.text();
             
             modifiedCount.innerText = data.length;
             refineOutput.innerHTML = marked.parse(data);
             refineOutput.setAttribute('data-raw', data); 
-        } catch (err) { refineOutput.innerHTML = "오류 발생"; }
-        finally { refineBtn.disabled = false; }
+        } catch (err) { 
+            refineOutput.innerHTML = "다듬기 실패: " + err.message; 
+        } finally { 
+            refineBtn.disabled = false; 
+        }
     }
 
-    // --- UTILITY ---
+    // --- 유틸리티 함수 (복사/히스토리) ---
     function copyText(id) {
         const el = document.getElementById(id);
         navigator.clipboard.writeText(el.value).then(() => alert("복사되었습니다!"));
@@ -195,7 +206,9 @@
     function updateHistoryUI() {
         const container = document.getElementById('history');
         const history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
-        container.innerHTML = history.map(item => `<span class="history-item" onclick="fetchVerse('${item}')">${item}</span>`).join('');
+        container.innerHTML = history.map(item => 
+            `<span class="history-item" onclick="fetchVerse('${item}')">${item}</span>`
+        ).join('');
     }
 </script>
 </body>
