@@ -72,7 +72,6 @@ const BOOK_NAMES = {
     "jude": "유다서", "jud": "유다서", "유": "유다서",
     "revelation": "요한계시록", "rev": "요한계시록", "rv": "요한계시록", "계": "요한계시록"
 };
-
 exports.handler = async (event) => {
     const userQuery = event.queryStringParameters.ref;
     if (!userQuery) return { statusCode: 400, body: "Error: No reference." };
@@ -98,55 +97,55 @@ exports.handler = async (event) => {
             headers: { 'User-Agent': 'Mozilla/5.0' } 
         });
         const $ = cheerio.load(data);
-        let verses = [];
+        
+        // Use a Set to store unique verses in order
+        let versesFound = [];
 
-        // Focus strictly on the article body
-        const contentArea = $('.entry-content, .content, article').first();
-        const target = contentArea.length ? contentArea : $('body');
+        // FOCUS only on the content body to avoid grabbing navigation or headers
+        const contentBody = $('.entry-content').text() || $('body').text();
 
-        target.find('p, div, span, li').each((i, el) => {
-            let rawText = $(el).text().trim();
-            
-            // Noise filtering: Skip if it looks like site navigation
-            const noiseKeywords = ["Prev", "Next", "List", "목록", "Facebook", "Twitter", "인쇄", "by 자료선교부"];
-            if (noiseKeywords.some(k => rawText.startsWith(k)) || rawText.length < 2) return;
+        // 1. CLEANING: Remove all < > tags and their content immediately
+        const cleanBody = contentBody.replace(/<[^>]*>/g, '');
 
-            // REGEX EXPLAINED:
-            // ^[\s(]* -> Optional leading space or bracket
-            // (\d+[:.]\s*)?    -> Optional "Chapter:" prefix
-            // (\d+)            -> THE VERSE NUMBER (Required)
-            // [\s.)]* -> Zero or more spaces/dots (Sticky text support)
-            // (.*)             -> THE ACTUAL BIBLE TEXT
-            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[\s.)]*(.*)/);
+        // 2. PARSING: Split the text by verse numbers
+        // This looks for numbers like "1 ", "2 ", "1:1 ", etc.
+        const parts = cleanBody.split(/(?=\n\d+\s|\s\d+\s|^ \d+\s|\d+:\d+\s)/);
+
+        parts.forEach(part => {
+            const trimmedPart = part.trim();
+            // Regex to find: (Chapter:Verse or VerseNum)(Space)(Text)
+            const vMatch = trimmedPart.match(/^(\d+[:.]\s*)?(\d+)\s+(.*)/s);
             
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
-                const content = vMatch[3].trim();
-                
-                // Only process if verse has actual content and is in range
-                if (vNum >= start && vNum <= end && content.length > 0) {
-                    if (!verses.some(v => v.num === vNum)) {
-                        verses.push({ num: vNum, text: content });
+                const vText = vMatch[3].trim();
+
+                // 3. STRICT RANGE FILTER
+                if (vNum >= start && vNum <= end) {
+                    // Check for duplicates
+                    if (!versesFound.some(v => v.num === vNum)) {
+                        versesFound.push({ num: vNum, text: vText });
                     }
                 }
             }
         });
 
-        if (verses.length === 0) {
+        if (versesFound.length === 0) {
             return { statusCode: 404, body: `No verses found in range ${start}-${end}.` };
         }
 
-        verses.sort((a, b) => a.num - b.num);
-        const resultLines = verses.map(v => v.text).join('\n');
-        const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
+        // 4. FORMATTING: Remove the verse numbers from the start of the output
+        versesFound.sort((a, b) => a.num - b.num);
+        const finalLines = versesFound.map(v => v.text).join('\n');
+        const header = `[${fullKoreanBook} ${chapter}:${start}-${end}]`;
 
         return {
             statusCode: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
-            body: `${header}\n${resultLines}`
+            body: `${header}\n${finalLines}`
         };
 
     } catch (error) {
-        return { statusCode: 500, body: `Error: ${error.message}` };
+        return { statusCode: 500, body: `Fetch failed: ${error.message}` };
     }
 };
