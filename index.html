@@ -11,8 +11,24 @@
         h2 { color: #2c3e50; text-align: center; margin-bottom: 20px; }
         h3 { color: #2c3e50; font-size: 18px; margin-top: 30px; margin-bottom: 10px; }
 
-        input, textarea { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
-        textarea { height: 150px; resize: none; background-color: #fafafa; line-height: 1.6; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        
+        /* --- AUTO-EXPANDING TEXTAREA CSS --- */
+        textarea { 
+            width: 100%; 
+            padding: 12px; 
+            margin-bottom: 10px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            box-sizing: border-box; 
+            font-size: 16px;
+            background-color: #fafafa; 
+            line-height: 1.6;
+            min-height: 100px;
+            overflow: hidden; /* Hide scrollbars as it grows */
+            resize: none;     /* Disable manual resize since it's automatic now */
+            transition: height 0.1s ease;
+        }
 
         .history { margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
         .history-item { background: #e0eafc; padding: 5px 12px; border-radius: 15px; font-size: 12px; cursor: pointer; color: #3498db; border: 1px solid #b3cdef; }
@@ -30,7 +46,7 @@
             display: none; padding: 20px; border-radius: 6px; margin-top: 15px; font-size: 15px; line-height: 1.6; 
         }
         #aiOutput { background: #fdf2ff; border: 1px solid #dcb0ea; color: #4b2c5e; }
-        #refineOutput { background: #f0f4f8; border: 1px solid #bcccdc; color: #243b53; display: block; } /* Ensure block when shown */
+        #refineOutput { background: #f0f4f8; border: 1px solid #bcccdc; color: #243b53; }
 
         .markdown-body ul { padding-left: 20px; }
         .loading { text-align: center; display: none; color: #7f8c8d; font-size: 14px; margin: 10px 0; }
@@ -46,7 +62,9 @@
     <div id="history" class="history"></div>
     <button class="btn-fetch" onclick="fetchVerse()">말씀 가져오기</button>
     <div id="loading" class="loading">찾는 중...</div>
-    <textarea id="output" readonly placeholder="성경 구절이 표시됩니다..."></textarea>
+    
+    <textarea id="output" readonly placeholder="성경 구절이 표시됩니다..." oninput="autoExpand(this)"></textarea>
+    
     <button id="copyBtn" class="btn-copy" style="display:none;" onclick="copyText('output')">구절 복사</button>
     <button id="aiBtn" class="btn-ai" onclick="interpretAI()">AI 말씀 묵상 ✨</button>
     <div id="aiOutput" class="markdown-body"></div>
@@ -55,13 +73,16 @@
 
     <h3>✍️ 나의 묵상 기록</h3>
     <div class="count-label">원본 글자 수: <span id="originalCount">0</span>자</div>
-    <textarea id="userDevotional" placeholder="오늘의 묵상을 기록하세요..." oninput="updateOriginalCount()"></textarea>
+    
+    <textarea id="userDevotional" 
+              placeholder="오늘의 묵상을 기록하세요..." 
+              oninput="updateDevotional(this)"></textarea>
     
     <button id="refineBtn" class="btn-refine" onclick="refineDevotional()">AI 문장 다듬기 (500자 제한) ✨</button>
     
     <div id="refineResultArea" style="display: none;">
         <div class="count-label" style="text-align: left; font-weight: bold;">다듬어진 묵상 (수정 후: <span id="modifiedCount">0</span>자)</div>
-        <div id="refineOutput" class="markdown-body"></div>
+        <div id="refineOutput" class="markdown-body" style="display:block;"></div>
         <button id="copyRefineBtn" class="btn-copy" onclick="copyRefinedText()">다듬어진 문장 복사</button>
     </div>
 </div>
@@ -69,16 +90,25 @@
 <script>
     document.addEventListener('DOMContentLoaded', updateHistoryUI);
 
-    // --- Character Counters ---
-    function updateOriginalCount() {
-        const text = document.getElementById('userDevotional').value;
+    // --- AUTO-EXPAND LOGIC ---
+    function autoExpand(el) {
+        el.style.height = 'auto';
+        el.style.height = el.scrollHeight + 'px';
+    }
+
+    // Helper to combine count and expand
+    function updateDevotional(el) {
+        autoExpand(el);
+        const text = el.value;
         document.getElementById('originalCount').innerText = text.length;
     }
 
-    // --- Bible Logic ---
+    // --- BIBLE LOGIC ---
     async function fetchVerse(overrideInput = null) {
-        const input = overrideInput || document.getElementById('verseInput').value;
-        if (overrideInput) document.getElementById('verseInput').value = overrideInput;
+        const inputField = document.getElementById('verseInput');
+        const input = overrideInput || inputField.value;
+        if (overrideInput) inputField.value = overrideInput;
+        
         const output = document.getElementById('output');
         const loading = document.getElementById('loading');
 
@@ -89,6 +119,10 @@
             const res = await fetch(`/.netlify/functions/getBible?ref=${encodeURIComponent(input)}`);
             const data = await res.text();
             output.value = data;
+            
+            // Trigger auto-expand after content loads
+            autoExpand(output);
+            
             document.getElementById('copyBtn').style.display = 'block';
             document.getElementById('aiBtn').style.display = 'block';
             saveToHistory(input);
@@ -111,7 +145,7 @@
         } catch (err) { aiOutput.innerHTML = "AI 오류"; }
     }
 
-    // --- Refine Logic ---
+    // --- REFINE LOGIC ---
     async function refineDevotional() {
         const text = document.getElementById('userDevotional').value;
         const resultArea = document.getElementById('refineResultArea');
@@ -134,12 +168,12 @@
             
             modifiedCount.innerText = data.length;
             refineOutput.innerHTML = marked.parse(data);
-            refineOutput.setAttribute('data-raw', data); // Store for copy
+            refineOutput.setAttribute('data-raw', data); 
         } catch (err) { refineOutput.innerHTML = "오류 발생"; }
         finally { refineBtn.disabled = false; }
     }
 
-    // --- Utility ---
+    // --- UTILITY ---
     function copyText(id) {
         const el = document.getElementById(id);
         navigator.clipboard.writeText(el.value).then(() => alert("복사되었습니다!"));
