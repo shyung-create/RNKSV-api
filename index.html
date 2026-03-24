@@ -81,3 +81,120 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', updateHistoryUI);
+
+    // 1. 성경 구절 가져오기
+    async function fetchVerse(overrideInput = null) {
+        const inputField = document.getElementById('verseInput');
+        const input = overrideInput || inputField.value;
+        if (overrideInput) inputField.value = overrideInput;
+
+        const output = document.getElementById('output');
+        const loading = document.getElementById('loading');
+        const aiBtn = document.getElementById('aiBtn');
+        const aiOutput = document.getElementById('aiOutput');
+
+        if (!input) return alert("구절을 입력하세요!");
+
+        loading.style.display = 'block';
+        output.value = '';
+        aiBtn.style.display = 'none';
+        aiOutput.style.display = 'none';
+
+        try {
+            const res = await fetch(`/.netlify/functions/getBible?ref=${encodeURIComponent(input)}`);
+            const data = await res.text();
+
+            if (res.ok) {
+                output.value = data;
+                document.getElementById('copyBtn').style.display = 'block';
+                aiBtn.style.display = 'block';
+                saveToHistory(input);
+            } else {
+                output.value = data;
+            }
+        } catch (err) {
+            output.value = "연결 오류가 발생했습니다.";
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    // 2. AI 말씀 묵상 해석
+    async function interpretAI() {
+        const verses = document.getElementById('output').value;
+        const aiOutput = document.getElementById('aiOutput');
+        const aiBtn = document.getElementById('aiBtn');
+
+        aiOutput.style.display = 'block';
+        aiOutput.innerHTML = "<em>AI가 말씀을 묵상 중입니다...</em>";
+        aiBtn.disabled = true;
+
+        try {
+            const response = await fetch('/.netlify/functions/interpret', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ verses: verses })
+            });
+            const result = await response.text();
+            aiOutput.innerHTML = marked.parse(result);
+        } catch (err) {
+            aiOutput.innerHTML = "AI 해석을 가져오지 못했습니다.";
+        } finally {
+            aiBtn.disabled = false;
+        }
+    }
+
+    // 3. 나의 묵상 문장 다듬기
+    async function refineDevotional() {
+        const text = document.getElementById('userDevotional').value;
+        const refineOutput = document.getElementById('refineOutput');
+        const refineBtn = document.getElementById('refineBtn');
+
+        if (!text) return alert("내용을 입력해주세요!");
+
+        refineOutput.style.display = 'block';
+        refineOutput.innerHTML = "<em>문장을 다듬는 중입니다...</em>";
+        refineBtn.disabled = true;
+
+        try {
+            const response = await fetch('/.netlify/functions/refine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text })
+            });
+            const result = await response.text();
+            refineOutput.innerHTML = marked.parse(result);
+        } catch (err) {
+            refineOutput.innerHTML = "문장을 다듬는 데 실패했습니다.";
+        } finally {
+            refineBtn.disabled = false;
+        }
+    }
+
+    // 유틸리티 함수들
+    function saveToHistory(ref) {
+        let history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
+        history = history.filter(item => item !== ref);
+        history.unshift(ref);
+        localStorage.setItem('bibleHistory', JSON.stringify(history.slice(0, 5)));
+        updateHistoryUI();
+    }
+
+    function updateHistoryUI() {
+        const container = document.getElementById('history');
+        const history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
+        container.innerHTML = history.map(item => 
+            `<span class="history-item" onclick="fetchVerse('${item}')">${item}</span>`
+        ).join('');
+    }
+
+    function copyText() {
+        const output = document.getElementById('output');
+        output.select();
+        document.execCommand('copy');
+        alert("복사되었습니다!");
+    }
+</script>
+
+</body>
+</html>
