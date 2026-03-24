@@ -147,4 +147,13 @@
         ).join('');
     }
 
-    function
+    function copyText() {
+        const output = document.getElementById('output');
+        output.select();
+        document.execCommand('copy');
+        alert("복사되었습니다!");
+    }
+</script>
+
+</body>
+</html>
