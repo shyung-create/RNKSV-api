@@ -32,4 +32,54 @@
         .ai-postit {
             display: none; background: #fffa90; padding: 25px; margin-top: 40px; width: 85%; margin-left: auto; margin-right: auto; font-size: 14px; line-height: 1.6; box-shadow: 5px 5px 10px rgba(0,0,0,0.1); transform: rotate(-1deg); position: relative; white-space: pre-wrap;
         }
-        .ai-postit::after { content: ""; position: absolute; top: -10px; left
+        .ai-postit::after { content: ""; position: absolute; top: -10px; left: 30%; width: 40%; height: 20px; background: rgba(255,255,255,0.5); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📖 Bible AI Compare</h2>
+    <input type="text" id="verseInput" placeholder="Matthew 2:1-5">
+    <div id="history" class="history"></div>
+    <button class="btn-fetch" onclick="fetchVerse()">Fetch</button>
+    <textarea id="output" readonly></textarea>
+    
+    <button id="aiBtn" class="btn-ai" onclick="interpretAI()">Interpret All Styles ✨</button>
+
+    <div id="style1" class="ai-original"></div>
+    <div id="style2" class="ai-devotional"></div>
+    <div id="style3" class="ai-postit"></div>
+</div>
+
+<script>
+    async function fetchVerse(overrideInput = null) {
+        const input = overrideInput || document.getElementById('verseInput').value;
+        const output = document.getElementById('output');
+        try {
+            const res = await fetch(`/.netlify/functions/getBible?ref=${encodeURIComponent(input)}`);
+            const text = await res.text();
+            output.value = text;
+            document.getElementById('aiBtn').style.display = 'block';
+        } catch (e) { output.value = "Fetch Error"; }
+    }
+
+    async function interpretAI() {
+        const verses = document.getElementById('output').value;
+        const boxes = [document.getElementById('style1'), document.getElementById('style2'), document.getElementById('style3')];
+        
+        boxes.forEach(b => { b.style.display = 'block'; b.innerText = "Thinking..."; });
+
+        try {
+            const response = await fetch('/.netlify/functions/interpret', {
+                method: 'POST',
+                body: JSON.stringify({ verses: verses })
+            });
+            const result = await response.text();
+            boxes.forEach(b => b.innerText = result);
+        } catch (err) {
+            boxes.forEach(b => b.innerText = "AI Failed. Check logs.");
+        }
+    }
+</script>
+</body>
+</html>
