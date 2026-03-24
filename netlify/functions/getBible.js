@@ -73,6 +73,7 @@ const BOOK_NAMES = {
     "revelation": "요한계시록", "rev": "요한계시록", "rv": "요한계시록", "계": "요한계시록"
 };
 
+
 exports.handler = async (event) => {
     const userQuery = event.queryStringParameters.ref;
     if (!userQuery) return { statusCode: 400, body: "Error: No reference provided." };
@@ -82,24 +83,29 @@ exports.handler = async (event) => {
     if (!match) return { statusCode: 400, body: "Error: Invalid Format." };
 
     let [_, bookRaw, chapter, startV, endV] = match;
-    bookRaw = bookRaw.trim().toLowerCase(); // Normalize to lowercase for mapping
+    bookRaw = bookRaw.trim().toLowerCase();
     const start = parseInt(startV);
     const end = endV ? parseInt(endV) : start;
 
-    // 1. Resolve to Korean Full Name
+    // 1. 한국어 정식 명칭으로 변환
     const fullKoreanBook = BOOK_NAMES[bookRaw] || bookRaw;
     
-    // 2. Flexible Lookup in bible_map.json
-    const searchKey = `${fullKoreanBook} ${parseInt(chapter)}`; // e.g., "마태복음 2"
-    const urlId = bibleMapData[searchKey] || bibleMapData[`${fullKoreanBook} ${chapter.padStart(2, '0')}`];
+    // 2. JSON 키 형식에 맞게 변환 (중요!)
+    // 예: "1" -> "01", "10" -> "10"
+    const paddedChapter = chapter.toString().padStart(2, '0');
+    // JSON에 있는 "표준새번역 창세기 01" 형식과 일치시킴
+    const searchKey = `표준새번역 ${fullKoreanBook} ${paddedChapter}`;
+
+    const urlId = bibleMapData[searchKey];
 
     if (!urlId) {
         return { 
             statusCode: 404, 
-            body: `Error: Could not find URL for ${fullKoreanBook} ${chapter}. Please check your bible_map.json entries.` 
+            body: `Error: Could not find URL for '${searchKey}' in bible_map.json.` 
         };
     }
 
+    // JSON의 ID 값에 이미 ?page=1이 포함되어 있어도 정상 작동합니다.
     const url = `https://nocr.net/kornks/${urlId}`;
 
     try {
@@ -107,7 +113,7 @@ exports.handler = async (event) => {
         const $ = cheerio.load(data);
         let verses = [];
 
-        // Scraper logic: Find text lines starting with a verse number
+        // 본문 추출 로직
         $('p, div, span, li').each((i, el) => {
             const rawText = $(el).text().trim();
             const vMatch = rawText.match(/^(\d+[:.]?)?(\d+)\s+(.*)/);
@@ -132,10 +138,7 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 200,
-            headers: { 
-                "Content-Type": "text/plain; charset=utf-8",
-                "Access-Control-Allow-Origin": "*" 
-            },
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
             body: `${header}\n${resultText}`
         };
     } catch (error) {
