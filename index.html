@@ -3,83 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bible AI Comparison</title>
+    <title>NKSV Bible AI Fetcher</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        /* --- General Layout --- */
         body { font-family: -apple-system, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
-        .container { background: white; padding: 2rem; border-radius: 12px; width: 100%; max-width: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        h2 { color: #2c3e50; text-align: center; }
-        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 10px; }
+        .container { background: white; padding: 2rem; border-radius: 12px; width: 100%; max-width: 550px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        h2 { color: #2c3e50; text-align: center; margin-bottom: 20px; }
+        
+        /* Input & History */
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .history { margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .history-item { background: #e0eafc; padding: 5px 12px; border-radius: 15px; font-size: 12px; cursor: pointer; color: #3498db; border: 1px solid #b3cdef; transition: 0.2s; }
+        .history-item:hover { background: #d0e0fb; }
+
+        /* Buttons */
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; margin-bottom: 10px; }
         .btn-fetch { background-color: #3498db; color: white; }
         .btn-ai { background-color: #9b59b6; color: white; display: none; }
-        textarea { width: 100%; height: 150px; margin-top: 15px; padding: 12px; border: 1px solid #eee; border-radius: 6px; resize: none; box-sizing: border-box; background-color: #fafafa; }
-        .history { margin: 10px 0; display: flex; flex-wrap: wrap; gap: 8px; }
-        .history-item { background: #e0eafc; padding: 5px 10px; border-radius: 15px; font-size: 12px; cursor: pointer; color: #3498db; }
+        .btn-copy { background-color: #2ecc71; color: white; display: none; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        /* Output Areas */
+        textarea { width: 100%; height: 180px; margin-top: 15px; padding: 12px; border: 1px solid #eee; border-radius: 6px; font-size: 14px; line-height: 1.6; resize: none; box-sizing: border-box; background-color: #fafafa; }
         
-        /* --- Option 1: Original --- */
-        .ai-original {
-            display: none; background: #fdf2ff; border: 1px solid #dcb0ea; padding: 15px; border-radius: 6px; margin-top: 20px; font-size: 14px; white-space: pre-wrap;
+        /* AI Original Style - Markdown Support */
+        #aiOutput {
+            display: none; 
+            background: #fdf2ff; 
+            border: 1px solid #dcb0ea; 
+            padding: 20px; 
+            border-radius: 6px; 
+            margin-top: 20px; 
+            font-size: 15px; 
+            color: #4b2c5e;
+            line-height: 1.6;
         }
-
-        /* --- Option 2: Devotional Note --- */
-        .ai-devotional {
-            display: none; background: #fdfaf6; border-left: 5px solid #9b59b6; padding: 20px; margin-top: 20px; font-family: "Georgia", serif; line-height: 1.8; box-shadow: 0 4px 15px rgba(0,0,0,0.05); white-space: pre-wrap;
-        }
-        .ai-devotional::before { content: "오늘의 묵상 (Devotional Note)"; display: block; font-weight: bold; color: #9b59b6; margin-bottom: 10px; font-size: 12px; text-transform: uppercase; }
-
-        /* --- Option 3: Post-it Note --- */
-        .ai-postit {
-            display: none; background: #fffa90; padding: 25px; margin-top: 40px; width: 85%; margin-left: auto; margin-right: auto; font-size: 14px; line-height: 1.6; box-shadow: 5px 5px 10px rgba(0,0,0,0.1); transform: rotate(-1deg); position: relative; white-space: pre-wrap;
-        }
-        .ai-postit::after { content: ""; position: absolute; top: -10px; left: 30%; width: 40%; height: 20px; background: rgba(255,255,255,0.5); }
+        /* Style adjustments for Markdown elements inside the AI box */
+        #aiOutput ul { padding-left: 20px; margin: 10px 0; }
+        #aiOutput li { margin-bottom: 8px; }
+        #aiOutput strong { color: #7d3c98; }
+        
+        .loading { text-align: center; display: none; color: #7f8c8d; font-size: 14px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📖 Bible AI Compare</h2>
-    <input type="text" id="verseInput" placeholder="Matthew 2:1-5">
-    <div id="history" class="history"></div>
-    <button class="btn-fetch" onclick="fetchVerse()">Fetch</button>
-    <textarea id="output" readonly></textarea>
+    <h2>📖 NKSV Bible AI</h2>
     
-    <button id="aiBtn" class="btn-ai" onclick="interpretAI()">Interpret All Styles ✨</button>
-
-    <div id="style1" class="ai-original"></div>
-    <div id="style2" class="ai-devotional"></div>
-    <div id="style3" class="ai-postit"></div>
+    <input type="text" id="verseInput" placeholder="예: Matthew 2:1-5, 마태 1:1">
+    <div id="history" class="history"></div>
+    
+    <button class="btn-fetch" onclick="fetchVerse()">말씀 가져오기</button>
+    <div id="loading" class="loading">찾는 중...</div>
+    
+    <textarea id="output" readonly placeholder="성경 구절이 여기 표시됩니다..."></textarea>
+    
+    <button id="copyBtn" class="btn-copy" onclick="copyText()">클립보드 복사</button>
+    <button id="aiBtn" class="btn-ai" onclick="interpretAI()">AI 말씀 묵상 ✨</button>
+    
+    <div id="aiOutput"></div>
 </div>
 
 <script>
+    document.addEventListener('DOMContentLoaded', updateHistoryUI);
+
     async function fetchVerse(overrideInput = null) {
-        const input = overrideInput || document.getElementById('verseInput').value;
+        const inputField = document.getElementById('verseInput');
+        const input = overrideInput || inputField.value;
+        if (overrideInput) inputField.value = overrideInput;
+
         const output = document.getElementById('output');
+        const loading = document.getElementById('loading');
+        const aiBtn = document.getElementById('aiBtn');
+        const aiOutput = document.getElementById('aiOutput');
+
+        if (!input) return alert("구절을 입력하세요!");
+
+        loading.style.display = 'block';
+        output.value = '';
+        aiBtn.style.display = 'none';
+        aiOutput.style.display = 'none';
+
         try {
             const res = await fetch(`/.netlify/functions/getBible?ref=${encodeURIComponent(input)}`);
-            const text = await res.text();
-            output.value = text;
-            document.getElementById('aiBtn').style.display = 'block';
-        } catch (e) { output.value = "Fetch Error"; }
+            const data = await res.text();
+
+            if (res.ok) {
+                output.value = data;
+                document.getElementById('copyBtn').style.display = 'block';
+                aiBtn.style.display = 'block';
+                saveToHistory(input);
+            } else {
+                output.value = data;
+            }
+        } catch (err) {
+            output.value = "연결 오류가 발생했습니다.";
+        } finally {
+            loading.style.display = 'none';
+        }
     }
 
     async function interpretAI() {
         const verses = document.getElementById('output').value;
-        const boxes = [document.getElementById('style1'), document.getElementById('style2'), document.getElementById('style3')];
-        
-        boxes.forEach(b => { b.style.display = 'block'; b.innerText = "Thinking..."; });
+        const aiOutput = document.getElementById('aiOutput');
+        const aiBtn = document.getElementById('aiBtn');
+
+        aiOutput.style.display = 'block';
+        aiOutput.innerHTML = "<em>AI가 묵상 중입니다...</em>";
+        aiBtn.disabled = true;
 
         try {
             const response = await fetch('/.netlify/functions/interpret', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ verses: verses })
             });
             const result = await response.text();
-            boxes.forEach(b => b.innerText = result);
+            
+            // --- MARKDOWN RENDERING HAPPENS HERE ---
+            aiOutput.innerHTML = marked.parse(result);
+            
         } catch (err) {
-            boxes.forEach(b => b.innerText = "AI Failed. Check logs.");
+            aiOutput.innerHTML = "AI 해석을 가져오지 못했습니다.";
+        } finally {
+            aiBtn.disabled = false;
         }
     }
-</script>
-</body>
-</html>
+
+    function saveToHistory(ref) {
+        let history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
+        history = history.filter(item => item !== ref);
+        history.unshift(ref);
+        localStorage.setItem('bibleHistory', JSON.stringify(history.slice(0, 5)));
+        updateHistoryUI();
+    }
+
+    function updateHistoryUI() {
+        const container = document.getElementById('history');
+        const history = JSON.parse(localStorage.getItem('bibleHistory') || '[]');
+        container.innerHTML = history.map(item => 
+            `<span class="history-item" onclick="fetchVerse('${item}')">${item}</span>`
+        ).join('');
+    }
+
+    function
