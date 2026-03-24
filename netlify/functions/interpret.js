@@ -10,7 +10,7 @@ exports.handler = async (event) => {
         const { verses } = JSON.parse(event.body);
         const apiKey = process.env.GEMINI_API_KEY; // We will set this in Netlify
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
         const payload = {
             contents: [{
