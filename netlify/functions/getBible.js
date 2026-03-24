@@ -15,7 +15,7 @@ exports.handler = async (event) => {
     if (!userQuery) return { statusCode: 400, body: "Missing reference." };
 
     // 1. Regex to Parse Input
-    const regex = /([a-zA-Z\uAC00-\uD7A3\d\s]+)\s+(\d+):(\d+)(?:-(\d+))?/;
+    const regex = /([a-zA-Z\uAC00-\uD7A3\d\s]+)\s+(\d+):(\d+)(?:[-–—](\d+))?/;
     const match = userQuery.match(regex);
     if (!match) return { statusCode: 400, body: "Invalid Format." };
 
