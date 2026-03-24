@@ -154,6 +154,60 @@
         alert("복사되었습니다!");
     }
 </script>
+<div id="aiOutput"></div>
 
+    <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+    <h3>✍️ 나의 묵상 기록 (Self Devotional)</h3>
+    <textarea id="userDevotional" placeholder="오늘 느낀 점이나 묵상한 내용을 자유롭게 적어보세요..."></textarea>
+    
+    <button id="refineBtn" class="btn-refine" onclick="refineDevotional()">AI 문장 다듬기 ✨</button>
+    
+    <div id="refineOutput" class="ai-original"></div>
+</div>
+
+<style>
+    /* Add this to your existing <style> section */
+    h3 { color: #2c3e50; font-size: 18px; margin-bottom: 10px; }
+    #userDevotional { width: 100%; height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; resize: none; box-sizing: border-box; }
+    .btn-refine { background-color: #2c3e50; color: white; margin-top: 10px; width: 100%; }
+    .btn-refine:hover { background-color: #1a252f; }
+    
+    /* Ensure refineOutput looks like aiOutput */
+    #refineOutput { display: none; margin-top: 15px; background: #f0f4f8; border-color: #bcccdc; color: #243b53; }
+</style>
+
+<script>
+    // Add this function to your existing <script> section
+    async function refineDevotional() {
+        const text = document.getElementById('userDevotional').value;
+        const output = document.getElementById('refineOutput');
+        const btn = document.getElementById('refineBtn');
+
+        if (!text) return alert("다듬을 내용을 입력해주세요!");
+
+        output.style.display = 'block';
+        output.innerHTML = "<em>문장을 다듬는 중입니다...</em>";
+        btn.disabled = true;
+
+        try {
+            const response = await fetch('/.netlify/functions/refine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text })
+            });
+            const result = await response.text();
+            
+            // Render as Markdown
+            output.innerHTML = marked.parse(result);
+        } catch (err) {
+            output.innerHTML = "다듬기에 실패했습니다.";
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
 </body>
 </html>
+
+
