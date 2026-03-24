@@ -1,157 +1,40 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NKSV Bible AI Fetcher</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        body { font-family: -apple-system, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
-        .container { background: white; padding: 2rem; border-radius: 12px; width: 100%; max-width: 550px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        h2 { color: #2c3e50; text-align: center; margin-bottom: 20px; }
-        h3 { color: #2c3e50; font-size: 18px; margin-top: 30px; margin-bottom: 10px; }
+const axios = require('axios');
 
-        /* Input & History */
-        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
-        .history { margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .history-item { background: #e0eafc; padding: 5px 12px; border-radius: 15px; font-size: 12px; cursor: pointer; color: #3498db; border: 1px solid #b3cdef; transition: 0.2s; }
-        .history-item:hover { background: #d0e0fb; }
+exports.handler = async (event) => {
+    if (event.httpMethod !== "POST") return { statusCode: 405, body: "POST only" };
 
-        /* Buttons */
-        button { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; margin-bottom: 10px; }
-        .btn-fetch { background-color: #3498db; color: white; }
-        .btn-ai { background-color: #9b59b6; color: white; display: none; }
-        .btn-copy { background-color: #2ecc71; color: white; display: none; }
-        .btn-refine { background-color: #2c3e50; color: white; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
+    try {
+        const { text } = JSON.parse(event.body);
+        const apiKey = process.env.GEMINI_API_KEY;
 
-        /* Output Areas */
-        textarea { width: 100%; height: 180px; margin-top: 10px; padding: 12px; border: 1px solid #eee; border-radius: 6px; font-size: 14px; line-height: 1.6; resize: none; box-sizing: border-box; background-color: #fafafa; }
-        #userDevotional { height: 120px; background-color: white; border: 1px solid #ddd; }
+        // Using Gemini 2.5 or 3 Flash
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-        /* AI Output Styles (Markdown Support) */
-        #aiOutput, #refineOutput {
-            display: none; 
-            padding: 20px; 
-            border-radius: 6px; 
-            margin-top: 20px; 
-            font-size: 15px; 
-            line-height: 1.6;
-        }
-        
-        #aiOutput { background: #fdf2ff; border: 1px solid #dcb0ea; color: #4b2c5e; }
-        #refineOutput { background: #f0f4f8; border: 1px solid #bcccdc; color: #243b53; }
+        const payload = {
+            contents: [{
+                parts: [{
+                    text: `사용자의 묵상 글을 다듬어 주세요.
+                    
+                    지침:
+                    1. 공백 포함 **최대 500자** 이내로 작성하세요.
+                    2. 서론(예: '다듬은 결과입니다')을 절대 쓰지 말고 **본문만** 출력하세요.
+                    3. 원문의 종결 어미(예: -한다, -해요)를 **그대로 유지**하세요.
+                    4. 문법과 맞춤법을 교정하고 문장을 매끄럽게 만드세요.
 
-        /* Markdown 내부 요소 스타일 */
-        .markdown-body ul { padding-left: 20px; margin: 10px 0; }
-        .markdown-body li { margin-bottom: 8px; }
-        .markdown-body strong { color: #2c3e50; }
+                    내용: \n\n ${text}`
+                }]
+            }]
+        };
 
-        .loading { text-align: center; display: none; color: #7f8c8d; font-size: 14px; margin: 10px 0; }
-        hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
-    </style>
-</head>
-<body>
+        const response = await axios.post(url, payload);
+        const aiText = response.data.candidates[0].content.parts[0].text;
 
-<div class="container">
-    <h2>📖 NKSV Bible AI</h2>
-
-    <input type="text" id="verseInput" placeholder="예: Matthew 2:1-5, 마태 1:1">
-    <div id="history" class="history"></div>
-
-    <button class="btn-fetch" onclick="fetchVerse()">말씀 가져오기</button>
-    <div id="loading" class="loading">찾는 중...</div>
-
-    <textarea id="output" readonly placeholder="성경 구절이 여기 표시됩니다..."></textarea>
-
-    <button id="copyBtn" class="btn-copy" onclick="copyText()">클립보드 복사</button>
-    <button id="aiBtn" class="btn-ai" onclick="interpretAI()">AI 말씀 묵상 ✨</button>
-
-    <div id="aiOutput" class="markdown-body"></div>
-
-<hr>
-
-    <h3>✍️ 나의 묵상 기록 (Self Devotional)</h3>
-    
-    <div style="text-align: right; font-size: 12px; color: #7f8c8d; margin-bottom: 5px;">
-        원본 글자 수: <span id="originalCount">0</span>자
-    </div>
-    
-    <textarea id="userDevotional" 
-              placeholder="오늘 느낀 점이나 묵상한 내용을 자유롭게 적어보세요..." 
-              oninput="updateOriginalCount()"></textarea>
-    
-    <button id="refineBtn" class="btn-refine" onclick="refineDevotional()">AI 문장 다듬기 ✨</button>
-    
-    <div id="refineResultContainer" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-            <span style="font-size: 14px; font-weight: bold; color: #2c3e50;">다듬어진 묵상</span>
-            <span style="font-size: 12px; color: #7f8c8d;">수정 후 글자 수: <span id="modifiedCount">0</span>자</span>
-        </div>
-        
-        <div id="refineOutput" class="markdown-body"></div>
-        
-        <button id="copyRefinedBtn" class="btn-copy" style="display: block; margin-top: 10px;" onclick="copyRefinedText()">
-            다듬어진 문장 복사
-        </button>
-    </div>
-</div>
-
-<script>
-    // --- Live Character Counter for Input ---
-    function updateOriginalCount() {
-        const text = document.getElementById('userDevotional').value;
-        document.getElementById('originalCount').innerText = text.length;
+        return {
+            statusCode: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+            body: aiText
+        };
+    } catch (error) {
+        return { statusCode: 500, body: "Refinement failed." };
     }
-
-    // --- Refine Function ---
-    async function refineDevotional() {
-        const text = document.getElementById('userDevotional').value;
-        const resultContainer = document.getElementById('refineResultContainer');
-        const refineOutput = document.getElementById('refineOutput');
-        const modifiedCountDisp = document.getElementById('modifiedCount');
-        const refineBtn = document.getElementById('refineBtn');
-
-        if (!text) return alert("내용을 입력해주세요!");
-
-        resultContainer.style.display = 'block';
-        refineOutput.innerHTML = "<em>문장을 다듬는 중입니다...</em>";
-        refineBtn.disabled = true;
-
-        try {
-            const response = await fetch('/.netlify/functions/refine', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text })
-            });
-            const result = await response.text();
-            
-            // Show character count of the AI result
-            modifiedCountDisp.innerText = result.length;
-            
-            // Render as Markdown
-            refineOutput.innerHTML = marked.parse(result);
-            // Save raw text to a data attribute for easy copying
-            refineOutput.setAttribute('data-raw', result);
-            
-        } catch (err) {
-            refineOutput.innerHTML = "문장을 다듬는 데 실패했습니다.";
-        } finally {
-            refineBtn.disabled = false;
-        }
-    }
-
-    // --- Copy Refined Text Only ---
-    function copyRefinedText() {
-        const rawText = document.getElementById('refineOutput').getAttribute('data-raw');
-        if (!rawText) return;
-        
-        navigator.clipboard.writeText(rawText).then(() => {
-            alert("다듬어진 문장이 복사되었습니다!");
-        });
-    }
-
-    // ... your existing fetchVerse and interpretAI scripts ...
-</script>
-</body>
-</html>
+};
