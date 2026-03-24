@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Load the map you generated
-const bibleMapData = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'bible_map.json'), 'utf8'));
+const bibleMapData = require('./bible_map.json');
 
 // Book Name normalization (same as before)
 const BOOK_NAMES = {
