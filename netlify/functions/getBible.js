@@ -72,7 +72,6 @@ const BOOK_NAMES = {
     "jude": "유다서", "jud": "유다서", "유": "유다서",
     "revelation": "요한계시록", "rev": "요한계시록", "rv": "요한계시록", "계": "요한계시록"
 };
-
 exports.handler = async (event) => {
     const userQuery = event.queryStringParameters.ref;
     if (!userQuery) return { statusCode: 400, body: "Error: No reference." };
@@ -100,39 +99,38 @@ exports.handler = async (event) => {
         const $ = cheerio.load(data);
         let verses = [];
 
-        // 1. Scrape every element that might contain verse text
-        $('p, div, span, li').each((i, el) => {
+        // Selecting specific content area tags to avoid site navigation text
+        $('p, div.entry-content span, li').each((i, el) => {
             let rawText = $(el).text().trim();
-            
-            // 2. Remove anything between < and > (including the brackets)
-            rawText = rawText.replace(/<[^>]*>/g, '');
 
-            // 3. Regex to detect verse numbers at the start (e.g., "1", "1:1", "1.")
-            // This captures: (optional chapter part)(verse number)(space)(rest of text)
-            const vMatch = rawText.match(/^(\d+[:.]\s*)?(\d+)\s+(.*)/);
+            // 1. Identify the verse number FIRST
+            // Matches: "1:1 text", "1 text", "1. text", "(1) text"
+            const vMatch = rawText.match(/^[\s(]*(\d+[:.]\s*)?(\d+)[)\s.]+(.*)/);
             
             if (vMatch) {
                 const vNum = parseInt(vMatch[2]);
-                const content = vMatch[3].trim();
                 
-                // 4. STRICT FILTER: Only add if within the requested range
+                // 2. STRICT FILTER: Only proceed if within range
                 if (vNum >= start && vNum <= end) {
-                    // Avoid duplicates (since we check multiple tag types)
+                    
+                    // 3. CLEANING: Remove the verse prefix and any <...> tags
+                    let cleanContent = vMatch[3].trim();
+                    cleanContent = cleanContent.replace(/<[^>]*>/g, '');
+
+                    // 4. Avoid duplicates
                     if (!verses.some(v => v.num === vNum)) {
-                        verses.push({ num: vNum, text: content });
+                        verses.push({ num: vNum, text: cleanContent });
                     }
                 }
             }
         });
 
-        // Sort by verse number
-        verses.sort((a, b) => a.num - b.num);
-
         if (verses.length === 0) {
             return { statusCode: 404, body: `Error: No verses found in range ${start}-${end}.` };
         }
 
-        // 5. Final output construction
+        // Sort and combine
+        verses.sort((a, b) => a.num - b.num);
         const resultLines = verses.map(v => v.text).join('\n');
         const header = `'${fullKoreanBook} ${chapter}:${start}-${end}'`;
 
@@ -143,6 +141,6 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        return { statusCode: 500, body: `Error: Fetch failed. ${error.message}` };
+        return { statusCode: 500, body: `Error: ${error.message}` };
     }
 };
